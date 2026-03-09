@@ -140,10 +140,10 @@ def init_db():
     
     c.execute("SELECT count(*) FROM level_config")
     if c.fetchone()[0] == 0:
-        c.execute("INSERT INTO level_config VALUES ('Bronze', 0, '🥉')")
-        c.execute("INSERT INTO level_config VALUES ('Prata', 1000, '🥈')")
-        c.execute("INSERT INTO level_config VALUES ('Ouro', 5000, '🥇')")
-        c.execute("INSERT INTO level_config VALUES ('Diamante', 10000, '💎')")
+        c.execute("INSERT OR IGNORE INTO level_config VALUES ('Bronze', 0, '🥉')")
+        c.execute("INSERT OR IGNORE INTO level_config VALUES ('Prata', 1000, '🥈')")
+        c.execute("INSERT OR IGNORE INTO level_config VALUES ('Ouro', 5000, '🥇')")
+        c.execute("INSERT OR IGNORE INTO level_config VALUES ('Diamante', 10000, '💎')")
     
     # Notifications Table
     c.execute('''
@@ -199,9 +199,9 @@ def init_db():
 
     # Default admin
     try:
-        c.execute("INSERT INTO users (username, email, password, role, balance) VALUES (?, ?, ?, ?, ?)",
+        c.execute("INSERT OR IGNORE INTO users (username, email, password, role, balance) VALUES (?, ?, ?, ?, ?)",
                   ("admin", "admin@petro.com", hash_password("admin123"), "Administrador", 0))
-    except sqlite3.IntegrityError:
+    except Exception:
         pass
         
     conn.commit()
@@ -234,7 +234,7 @@ def create_user(username, email, password, role='Jogador'):
                 "id": row[0], "username": row[1], "email": row[2], "role": row[3], "balance": row[4], "created_at": row[5],
             })
         return True
-    except sqlite3.IntegrityError:
+    except Exception:
         return False
     finally:
         conn.close()
