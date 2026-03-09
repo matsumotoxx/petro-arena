@@ -165,17 +165,6 @@ def init_db():
         )
     ''')
 
-    # Report Schedules Table
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS report_schedules (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            report_type TEXT NOT NULL,
-            frequency TEXT NOT NULL,
-            email TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-
     # Default admin
     try:
         c.execute("INSERT OR IGNORE INTO users (username, email, password, role, balance) VALUES (?, ?, ?, ?, ?)",
@@ -649,23 +638,10 @@ def get_report_data(rtype, filters):
     conn.close()
     return df
 
-def create_report_schedule(rtype, freq, email):
+def update_mission_status(mission_id, status):
     conn = get_connection()
     c = conn.cursor()
-    c.execute("INSERT INTO report_schedules (report_type, frequency, email) VALUES (?, ?, ?)", (rtype, freq, email))
-    conn.commit()
-    conn.close()
-
-def get_report_schedules():
-    conn = get_connection()
-    df = pd.read_sql_query("SELECT * FROM report_schedules", conn)
-    conn.close()
-    return df
-
-def delete_report_schedule(sid):
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("DELETE FROM report_schedules WHERE id = ?", (sid,))
+    c.execute("UPDATE missions SET status = ? WHERE id = ?", (status, mission_id))
     conn.commit()
     conn.close()
 
