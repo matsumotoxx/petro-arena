@@ -1018,8 +1018,11 @@ def admin_dashboard():
                 if status != "Todos": filters['status'] = status
                 
             elif rep_type == "Financeiro":
-                t_type = c2.selectbox("Tipo de Transação", ["Todos", "EARN", "SPEND", "PENALTY"])
-                if t_type != "Todos": filters['type'] = t_type
+                t_type = c2.selectbox("Tipo de Transação", ["Todos", "CRÉDITO (EARN)", "DÉBITO (SPEND)", "PENALIDADE (PENALTY)"])
+                if t_type != "Todos": 
+                    # Extrair o termo original entre parênteses para o filtro do banco
+                    original_term = t_type.split("(")[1].split(")")[0]
+                    filters['type'] = original_term
 
         # Generate Data
         type_map = {"Usuários": "users", "Missões": "missions", "Financeiro": "financial"}
@@ -1539,6 +1542,10 @@ def player_dashboard():
         if not history.empty:
             st.markdown("<div class='timeline'>", unsafe_allow_html=True)
             for _, row in history.iterrows():
+                # Tradução contextual dos termos para o extrato
+                term_display = "CRÉDITO" if row['type'] == 'EARN' else "DÉBITO"
+                if row['type'] == 'PENALTY': term_display = "PENALIDADE"
+                
                 color = "var(--neon-green)" if row['type'] == 'EARN' else "#ff4b4b"
                 icon = "➕" if row['type'] == 'EARN' else "➖"
                 if row['type'] == 'SPEND': icon = "🛒"
@@ -1548,7 +1555,7 @@ def player_dashboard():
                     <div class='timeline-dot' style='border-color: {color}; box-shadow: 0 0 10px {color};'></div>
                     <div class='timeline-content' style='border-left-color: {color};'>
                         <div style='display:flex; justify-content:space-between;'>
-                            <strong style='color:{color}'>{icon} {row['type']}</strong>
+                            <strong style='color:{color}'>{icon} {term_display}</strong>
                             <span style='color:#888; font-size:0.8em;'>{format_brt(row['timestamp'])}</span>
                         </div>
                         <div style='font-size: 1.2em; color: white;'>{row['amount']} PTS</div>
