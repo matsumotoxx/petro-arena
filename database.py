@@ -541,23 +541,27 @@ def get_pending_requests():
     conn.close()
     return df
 
-def process_purchase_request(req_id, action, admin_id):
+def process_purchase_request(req_id, action, admin_id, reason=None):
     conn = get_connection()
     c = conn.cursor()
     c.execute("SELECT user_id, item_id FROM purchase_requests WHERE id = ?", (req_id,))
     req = c.fetchone()
     if not req: return False
     uid, item_id = req
+    
+    # Obter nome do item para notificações
+    c.execute("SELECT name, cost FROM store_items WHERE id = ?", (item_id,))
+    item_data = c.fetchone()
+    item_name = item_data[0]
+    item_cost = item_data[1]
+
     if action == 'APPROVE':
-        c.execute("SELECT cost, name FROM store_items WHERE id = ?", (item_id,))
-        item = c.fetchone()
-        cost, name = item
         c.execute("SELECT balance FROM users WHERE id = ?", (uid,))
         bal = c.fetchone()[0]
-        if bal < cost: return False
-        c.execute("UPDATE users SET balance = balance - ? WHERE id = ?", (cost, uid))
+        if bal < item_cost: return False
+        c.execute("UPDATE users SET balance = balance - ? WHERE id = ?", (item_cost, uid))
         c.execute("UPDATE purchase_requests SET status = 'APPROVED' WHERE id = ?", (req_id,))
-        c.execute("INSERT INTO transactions (user_id, type, amount, description) VALUES (?, 'SPEND', ?, ?)", (uid, cost, f"Compra: {name}"))
+        c.execute("INSERT INTO transactions (user_id, type, amount, description) VALUES (?, 'SPEND', ?, ?)", (uid, item_cost, f"Compra: {item_name}"))
         tx_id = c.lastrowid
         conn.commit()
         
@@ -568,9 +572,19 @@ def process_purchase_request(req_id, action, admin_id):
         c.execute("SELECT id, user_id, type, amount, description, timestamp FROM transactions WHERE id = ?", (tx_id,))
         trow = c.fetchone()
         if trow: sync_transaction({"id": trow[0], "user_id": trow[1], "username": u[0], "type": trow[2], "amount": trow[3], "description": trow[4], "timestamp": trow[5]})
+        
+        # Notificação de Aprovação
+        add_notification(uid, f"SUCESSO: Sua compra de '{item_name}' foi aprovada!")
     else:
         c.execute("UPDATE purchase_requests SET status = 'REJECTED' WHERE id = ?", (req_id,))
         conn.commit()
+        
+        # Notificação de Rejeição com Motivo
+        msg = f"NEGADO: Sua compra de '{item_name}' foi recusada."
+        if reason:
+            msg += f" Motivo: {reason}"
+        add_notification(uid, msg)
+        
     conn.close()
     return True
 
