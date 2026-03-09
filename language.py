@@ -21,6 +21,10 @@ TRANSLATIONS = {
     'DELETE_ITEM': 'Item Removido da Loja',
     'PURCHASE_APPROVE': 'Compra Aprovada',
     'PURCHASE_REJECT': 'Compra Rejeitada',
+    'APROVAR_COMPRA': 'Compra Aprovada',
+    'REJEITAR_COMPRA': 'Compra Rejeitada',
+    'REJECT_PURCHASE': 'Compra Rejeitada',
+    'APPROVE_PURCHASE': 'Compra Aprovada',
 }
 
 def get_text(key):

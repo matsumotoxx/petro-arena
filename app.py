@@ -851,19 +851,21 @@ def admin_dashboard():
             for _, row in filtered_logs.iterrows():
                 icon = "📝"
                 color = "#888"
-                if "DELETE" in row['action']:
+                action_key = row['action'].upper()
+                
+                if "DELETE" in action_key or "REMOVER" in action_key or "EXCLUIR" in action_key:
                     icon = "🗑️"
                     color = "#ff4b4b"
-                elif "APPROVE" in row['action']:
+                elif "APPROVE" in action_key or "APROVAR" in action_key:
                     icon = "✅"
                     color = "var(--neon-green)"
-                elif "REJECT" in row['action']:
+                elif "REJECT" in action_key or "REJEITAR" in action_key:
                     icon = "❌"
                     color = "#ff4b4b"
-                elif "PENALTY" in row['action']:
+                elif "PENALTY" in action_key or "PENALIDADE" in action_key:
                     icon = "⚠️"
                     color = "orange"
-                elif "EARN" in row['action']:
+                elif "EARN" in action_key or "CREDITO" in action_key:
                     icon = "🎁"
                     color = "var(--neon-blue)"
                 
