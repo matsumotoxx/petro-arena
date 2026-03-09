@@ -233,7 +233,8 @@ def get_leaderboard(sort_by='balance'):
     conn = get_connection()
     # Map 'date' to 'created_at' for SQLite
     actual_sort = 'created_at' if sort_by == 'date' else 'balance'
-    query = f"SELECT username, balance, role, created_at FROM users ORDER BY {actual_sort} DESC"
+    # Filtrar apenas usuários com cargo 'Jogador'
+    query = f"SELECT username, balance, role, created_at FROM users WHERE role = 'Jogador' ORDER BY {actual_sort} DESC"
     df = pd.read_sql_query(query, conn)
     
     # Adicionar informação de nível
