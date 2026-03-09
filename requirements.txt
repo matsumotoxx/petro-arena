@@ -1,0 +1,11 @@
+streamlit
+pandas
+numpy
+extra-streamlit-components
+pytz
+gspread
+fpdf
+pydrive2
+google-auth-oauthlib
+libsql
+openpyxl
