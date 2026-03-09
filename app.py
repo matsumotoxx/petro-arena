@@ -1095,28 +1095,7 @@ def admin_dashboard():
             st.markdown("Selecione o formato desejado para download.")
             
             with st.container(border=True):
-                # 1. Full DB Backup
-                st.markdown("##### 📦 Backup Completo (.db)")
-                st.caption("Cópia binária exata do banco de dados SQLite atual.")
-                
-                try:
-                    if hasattr(db, 'get_db_file_bytes'):
-                        db_bytes = db.get_db_file_bytes()
-                        st.download_button(
-                            label="⬇️ BAIXAR BACKUP COMPLETO",
-                            data=db_bytes,
-                            file_name=f"petro_arena_full_{datetime.now().strftime('%Y%m%d_%H%M')}.db",
-                            mime="application/x-sqlite3",
-                            use_container_width=True
-                        )
-                    else:
-                        st.warning("Função de backup aguardando atualização do sistema. Tente recarregar.")
-                except Exception as e:
-                    st.error(f"Erro ao gerar backup: {e}")
-                
-                st.markdown("---")
-                
-                # 2. SQL Dump
+                # 1. SQL Dump
                 st.markdown("##### 📜 Dump SQL (.sql)")
                 st.caption("Script SQL contendo estrutura e dados para recriação.")
                 
@@ -1138,7 +1117,7 @@ def admin_dashboard():
                 
                 st.markdown("---")
                 
-                # 3. Data Export (CSV/JSON ZIP)
+                # 2. Data Export (CSV/JSON ZIP)
                 st.markdown("##### 📊 Exportar Dados (CSV/JSON)")
                 st.caption("Arquivos de dados compactados para análise externa.")
                 
@@ -1178,12 +1157,10 @@ def admin_dashboard():
         # --- IMPORT SECTION ---
         with c_import:
             st.markdown("#### 📥 RESTAURAR DADOS")
-            st.warning("⚠️ A restauração substituirá os dados atuais. Faça backup antes de prosseguir!")
+            st.warning("⚠️ A restauração via Script SQL substituirá os dados atuais no Turso.")
             
             with st.container(border=True):
-                restore_type = st.radio("Método de Restauração", ["Arquivo de Banco (.db)", "Script SQL (.sql)"])
-                
-                uploaded_file = st.file_uploader(f"Carregar arquivo {restore_type.split()[-1]}", type=['db', 'sql'])
+                uploaded_file = st.file_uploader("Carregar Script SQL (.sql)", type=['sql'])
                 
                 if uploaded_file:
                     st.error("⚠️ ATENÇÃO: Esta ação é irreversível!")
@@ -1192,23 +1169,17 @@ def admin_dashboard():
                     if confirm_check:
                         if st.button("🔴 INICIAR RESTAURAÇÃO", type="primary", use_container_width=True):
                             with st.spinner("Processando restauração..."):
-                                success = False
-                                msg = ""
-                                
                                 try:
-                                    if restore_type == "Arquivo de Banco (.db)":
-                                        success, msg = db.restore_from_db_file(uploaded_file.getvalue())
-                                    else:
-                                        # SQL Script
-                                        string_data = uploaded_file.getvalue().decode("utf-8")
-                                        success, msg = db.restore_from_sql(string_data)
+                                    # SQL Script
+                                    string_data = uploaded_file.getvalue().decode("utf-8")
+                                    success, msg = db.restore_from_sql(string_data)
                                     
                                     if success:
                                         # Log Action
                                         db.log_audit_action(
                                             st.session_state.user['id'], 
                                             "RESTORE_BACKUP", 
-                                            f"Restored DB via {restore_type}"
+                                            "Restored DB via SQL Script"
                                         )
                                         st.success(msg)
                                         time.sleep(2)

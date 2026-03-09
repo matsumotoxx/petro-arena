@@ -38,28 +38,7 @@ GOOGLE_DRIVE_BACKUP_FOLDER_ID = "1VJjyPz_miyG48JuhgAIkb89lRdvQAsiBeiw-nhGLLlI"
 
 @st.cache_resource
 def init_db():
-    # Se estamos usando Turso, não precisamos do backup do Drive para carregar o banco
-    turso_url = st.secrets.get("TURSO_URL")
-    if turso_url:
-        conn = get_connection()
-    else:
-        # Check for DB in Google Drive and download if available
-        try:
-            drive_folder_id = st.secrets.get("google_drive_folder_id") or GOOGLE_DRIVE_BACKUP_FOLDER_ID
-            if drive_folder_id and drive_folder_id != "SEU_ID_DA_PASTA_DO_GOOGLE_DRIVE_AQUI":
-                latest_db_file_name = get_latest_db_file_name(drive_folder_id)
-                if latest_db_file_name and not os.path.exists(DB_NAME):
-                    # Usar toast para mensagens não intrusivas na inicialização
-                    st.toast(f"Baixando banco de dados: {latest_db_file_name}", icon="ℹ️")
-                    download_file_from_drive(latest_db_file_name, DB_NAME, drive_folder_id)
-                elif not os.path.exists(DB_NAME):
-                    print("Banco de dados local não encontrado. Criando um novo.")
-        except Exception as e:
-            # Registrar erro silenciosamente no console ou toast discreto
-            print(f"Erro de sincronização: {e}")
-            # st.toast(f"Sincronização offline: {e}", icon="⚠️")
-
-        conn = get_connection()
+    conn = get_connection()
     c = conn.cursor()
     
     # Users Table
@@ -295,21 +274,7 @@ def log_audit_action(admin_id, action, target_id=None, details=None):
     conn.close()
 
 def sync_db_to_drive():
-    # Se estamos usando Turso, o banco já está na nuvem
-    if st.secrets.get("TURSO_URL"):
-        return
-    
-    drive_folder_id = st.secrets.get("google_drive_folder_id") or GOOGLE_DRIVE_BACKUP_FOLDER_ID
-    if not drive_folder_id or drive_folder_id == "SEU_ID_DA_PASTA_DO_GOOGLE_DRIVE_AQUI":
-        st.error("ID da pasta do Google Drive não configurado.")
-        return
-    if os.path.exists(DB_NAME):
-        try:
-            filename = f"petro_arena_full_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
-            upload_file_to_drive(DB_NAME, drive_folder_id, file_name=filename)
-            st.success("Sincronizado!")
-        except Exception as e:
-            st.error(f"Erro: {e}")
+    return
 
 def get_db_tables():
     conn = get_connection()
@@ -349,9 +314,7 @@ def export_to_json_zip():
     zip_buffer.seek(0)
     return zip_buffer
 
-def get_db_file_bytes():
-    if os.path.exists(DB_NAME):
-        with open(DB_NAME, 'rb') as f: return f.read()
+def get_db_backup_binary():
     return None
 
 def restore_from_db_file(file_bytes):
