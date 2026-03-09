@@ -611,16 +611,29 @@ def admin_dashboard():
                 pts_earn = st.number_input("Qtd. Pontos", min_value=0, step=10, key="pts_earn")
                 reason_earn = st.text_input("Motivo (Missão)", key="reason_earn")
                 
-                if st.button("CONCEDER CRÉDITOS", use_container_width=True):
-                    if sel_player_earn and pts_earn > 0:
-                        db.update_points(sel_player_earn, pts_earn, reason_earn, 'EARN', st.session_state.user['id'])
-                        db.add_notification(sel_player_earn, f"MISSÃO CUMPRIDA: Você recebeu {pts_earn} pts! Motivo: {reason_earn}")
+                # Use uma função de callback para o botão para evitar StreamlitAPIException
+                def handle_earn_points():
+                    pts = st.session_state.get('pts_earn', 0)
+                    agent_id = st.session_state.get('sel_earn')
+                    reason = st.session_state.get('reason_earn', '')
+                    
+                    if agent_id and pts > 0:
+                        db.update_points(agent_id, pts, reason, 'EARN', st.session_state.user['id'])
+                        db.add_notification(agent_id, f"MISSÃO CUMPRIDA: Você recebeu {pts} pts! Motivo: {reason}")
                         get_cached_leaderboard.clear()
-                        st.success(f"{pts_earn} pontos adicionados com sucesso para o agente selecionado!")
-                        st.session_state.pts_earn = 0 # Reset after submission
-                        st.rerun()
+                        st.session_state.pts_earn = 0 # Reset state
+                        st.session_state.earn_success_msg = f"{pts} pontos adicionados com sucesso!"
                     else:
-                        st.warning("Por favor, selecione um agente e insira uma quantidade de pontos maior que zero.")
+                        st.session_state.earn_error_msg = "Por favor, selecione um agente e insira pontos > 0."
+
+                if st.button("CONCEDER CRÉDITOS", use_container_width=True, on_click=handle_earn_points):
+                    pass # A lógica agora está no callback
+
+                # Mostrar mensagens após o processamento do callback
+                if 'earn_success_msg' in st.session_state:
+                    st.success(st.session_state.pop('earn_success_msg'))
+                if 'earn_error_msg' in st.session_state:
+                    st.warning(st.session_state.pop('earn_error_msg'))
             st.markdown("</div>", unsafe_allow_html=True)
 
         with c_rem:
