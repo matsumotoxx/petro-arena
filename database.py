@@ -528,15 +528,24 @@ def process_purchase_request(req_id, action, admin_id, reason=None):
         
         # Notificação de Aprovação
         add_notification(uid, f"SUCESSO: Sua compra de '{item_name}' foi aprovada!")
+        
+        # Log de Auditoria
+        c.execute("INSERT INTO audit_logs (admin_id, action, target_id, details) VALUES (?, 'APROVAR_COMPRA', ?, ?)", 
+                  (admin_id, req_id, f"Compra aprovada: {item_name}"))
     else:
         c.execute("UPDATE purchase_requests SET status = 'REJECTED' WHERE id = ?", (req_id,))
-        conn.commit()
         
         # Notificação de Rejeição com Motivo
         msg = f"NEGADO: Sua compra de '{item_name}' foi recusada."
         if reason:
             msg += f" Motivo: {reason}"
         add_notification(uid, msg)
+        
+        # Log de Auditoria
+        c.execute("INSERT INTO audit_logs (admin_id, action, target_id, details) VALUES (?, 'REJEITAR_COMPRA', ?, ?)", 
+                  (admin_id, req_id, f"Compra rejeitada: {item_name}. Motivo: {reason if reason else 'Não informado'}"))
+        
+        conn.commit()
         
     conn.close()
     return True
