@@ -11,12 +11,20 @@ from datetime import datetime
 import pytz
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
+if 'sidebar_state' not in st.session_state:
+    st.session_state.sidebar_state = 'expanded'
+
 st.set_page_config(
     page_title="Petro Arena",
     page_icon="🎮",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state=st.session_state.sidebar_state
 )
+
+def toggle_sidebar():
+    st.session_state.sidebar_state = 'collapsed' if st.session_state.sidebar_state == 'expanded' else 'expanded'
+    # st.rerun() # Rerun is automatic with button callback usually, but explicit is safe if needed.
+
 
 # --- COOKIE MANAGER (PERSISTÊNCIA) ---
 def get_manager():
@@ -272,7 +280,6 @@ def load_custom_css(theme):
     [data-testid="stHeader"] { visibility: hidden; display: none !important; }
     [data-testid="stToolbar"] { visibility: hidden; display: none !important; }
     [data-testid="stDecoration"] { visibility: hidden; display: none !important; }
-    [data-testid="stSidebarCollapseButton"] { display: none !important; }
     .stAppDeployButton { visibility: hidden; display: none !important; }
     
     /* Ocultar barra de status de carregamento e outros elementos de marca */
@@ -455,6 +462,7 @@ def register():
 # --- INTERFACE DO ADMINISTRADOR ---
 def admin_dashboard():
     with st.sidebar:
+        if st.session_state.get('sidebar_state', 'expanded') == 'expanded':
             st.markdown("""
                 <div style="text-align: center; padding: 20px 0;">
                     <div style="width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(45deg, #bc13fe, #00f3ff); margin: 0 auto; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 20px rgba(188,19,254,0.5);">
@@ -467,6 +475,15 @@ def admin_dashboard():
             
             if st.button("ENCERRAR SESSÃO", use_container_width=True):
                 logout()
+            
+            st.markdown("---")
+            if st.button("⏪ OCULTAR MENU", use_container_width=True, key="admin_toggle_sidebar"):
+                toggle_sidebar()
+        else:
+            st.markdown("<div class='show-menu-button-wrapper'>", unsafe_allow_html=True)
+            if st.button("⏩ MOSTRAR MENU", use_container_width=True):
+                toggle_sidebar()
+            st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("## PAINEL DE CONTROLE")
     
@@ -598,42 +615,15 @@ def admin_dashboard():
             player_options = users[users['role'] == 'Jogador']
             
             if not player_options.empty:
-                if 'pts_earn' not in st.session_state:
-                    st.session_state.pts_earn = 0
-
-                sel_player_earn = st.selectbox(
-                    "Selecionar Agente", 
-                    options=player_options['id'].tolist(), 
-                    format_func=lambda x: player_options[player_options['id'] == x]['username'].values[0], 
-                    key="sel_earn",
-                    on_change=lambda: st.session_state.update(pts_earn=0) # Reset on change
-                )
-                pts_earn = st.number_input("Qtd. Pontos", min_value=0, step=10, key="pts_earn")
+                sel_player_earn = st.selectbox("Selecionar Agente", options=player_options['id'].tolist(), format_func=lambda x: player_options[player_options['id'] == x]['username'].values[0], key="sel_earn")
+                pts_earn = st.number_input("Qtd. Pontos", min_value=10, step=10, key="pts_earn")
                 reason_earn = st.text_input("Motivo (Missão)", key="reason_earn")
                 
-                # Use uma função de callback para o botão para evitar StreamlitAPIException
-                def handle_earn_points():
-                    pts = st.session_state.get('pts_earn', 0)
-                    agent_id = st.session_state.get('sel_earn')
-                    reason = st.session_state.get('reason_earn', '')
-                    
-                    if agent_id and pts > 0:
-                        db.update_points(agent_id, pts, reason, 'EARN', st.session_state.user['id'])
-                        db.add_notification(agent_id, f"MISSÃO CUMPRIDA: Você recebeu {pts} pts! Motivo: {reason}")
-                        get_cached_leaderboard.clear()
-                        st.session_state.pts_earn = 0 # Reset state
-                        st.session_state.earn_success_msg = f"{pts} pontos adicionados com sucesso!"
-                    else:
-                        st.session_state.earn_error_msg = "Por favor, selecione um agente e insira pontos > 0."
-
-                if st.button("CONCEDER CRÉDITOS", use_container_width=True, on_click=handle_earn_points):
-                    pass # A lógica agora está no callback
-
-                # Mostrar mensagens após o processamento do callback
-                if 'earn_success_msg' in st.session_state:
-                    st.success(st.session_state.pop('earn_success_msg'))
-                if 'earn_error_msg' in st.session_state:
-                    st.warning(st.session_state.pop('earn_error_msg'))
+                if st.button("CONCEDER CRÉDITOS", use_container_width=True):
+                    db.update_points(sel_player_earn, pts_earn, reason_earn, 'EARN', st.session_state.user['id'])
+                    db.add_notification(sel_player_earn, f"MISSÃO CUMPRIDA: Você recebeu {pts_earn} pts! Motivo: {reason_earn}")
+                    get_cached_leaderboard.clear()
+                    st.success(f"Créditos transferidos para o agente.")
             st.markdown("</div>", unsafe_allow_html=True)
 
         with c_rem:
@@ -718,7 +708,6 @@ def admin_dashboard():
                         </div>
                         """, unsafe_allow_html=True)
                         
-                        rejection_reason = st.text_input("Motivo da Rejeição", key=f"reason_{row['id']}")
                         c_yes, c_no = st.columns(2)
                         if c_yes.button("✅ AUTORIZAR", key=f"app_{row['id']}", use_container_width=True):
                             if db.process_purchase_request(row['id'], 'APPROVE', st.session_state.user['id']):
@@ -728,12 +717,9 @@ def admin_dashboard():
                                 st.error("Saldo insuficiente!")
                         
                         if c_no.button("❌ NEGAR", key=f"rej_{row['id']}", use_container_width=True):
-                            if rejection_reason:
-                                db.process_purchase_request(row['id'], 'REJECT', st.session_state.user['id'], rejection_reason)
-                                st.info("Negado.")
-                                st.rerun()
-                            else:
-                                st.error("O motivo da rejeição é obrigatório.")
+                            db.process_purchase_request(row['id'], 'REJECT', st.session_state.user['id'])
+                            st.info("Negado.")
+                            st.rerun()
             else:
                 st.info("Nenhuma requisição de compra pendente.")
 
@@ -851,21 +837,19 @@ def admin_dashboard():
             for _, row in filtered_logs.iterrows():
                 icon = "📝"
                 color = "#888"
-                action_key = row['action'].upper()
-                
-                if "DELETE" in action_key or "REMOVER" in action_key or "EXCLUIR" in action_key:
+                if "DELETE" in row['action']:
                     icon = "🗑️"
                     color = "#ff4b4b"
-                elif "APPROVE" in action_key or "APROVAR" in action_key:
+                elif "APPROVE" in row['action']:
                     icon = "✅"
                     color = "var(--neon-green)"
-                elif "REJECT" in action_key or "REJEITAR" in action_key:
+                elif "REJECT" in row['action']:
                     icon = "❌"
                     color = "#ff4b4b"
-                elif "PENALTY" in action_key or "PENALIDADE" in action_key:
+                elif "PENALTY" in row['action']:
                     icon = "⚠️"
                     color = "orange"
-                elif "EARN" in action_key or "CREDITO" in action_key:
+                elif "EARN" in row['action']:
                     icon = "🎁"
                     color = "var(--neon-blue)"
                 
@@ -1020,11 +1004,8 @@ def admin_dashboard():
                 if status != "Todos": filters['status'] = status
                 
             elif rep_type == "Financeiro":
-                t_type = c2.selectbox("Tipo de Transação", ["Todos", "CRÉDITO (EARN)", "DÉBITO (SPEND)", "PENALIDADE (PENALTY)"])
-                if t_type != "Todos": 
-                    # Extrair o termo original entre parênteses para o filtro do banco
-                    original_term = t_type.split("(")[1].split(")")[0]
-                    filters['type'] = original_term
+                t_type = c2.selectbox("Tipo de Transação", ["Todos", "EARN", "SPEND", "PENALTY"])
+                if t_type != "Todos": filters['type'] = t_type
 
         # Generate Data
         type_map = {"Usuários": "users", "Missões": "missions", "Financeiro": "financial"}
@@ -1100,7 +1081,28 @@ def admin_dashboard():
             st.markdown("Selecione o formato desejado para download.")
             
             with st.container(border=True):
-                # 1. SQL Dump
+                # 1. Full DB Backup
+                st.markdown("##### 📦 Backup Completo (.db)")
+                st.caption("Cópia binária exata do banco de dados SQLite atual.")
+                
+                try:
+                    if hasattr(db, 'get_db_file_bytes'):
+                        db_bytes = db.get_db_file_bytes()
+                        st.download_button(
+                            label="⬇️ BAIXAR BACKUP COMPLETO",
+                            data=db_bytes,
+                            file_name=f"petro_arena_full_{datetime.now().strftime('%Y%m%d_%H%M')}.db",
+                            mime="application/x-sqlite3",
+                            use_container_width=True
+                        )
+                    else:
+                        st.warning("Função de backup aguardando atualização do sistema. Tente recarregar.")
+                except Exception as e:
+                    st.error(f"Erro ao gerar backup: {e}")
+                
+                st.markdown("---")
+                
+                # 2. SQL Dump
                 st.markdown("##### 📜 Dump SQL (.sql)")
                 st.caption("Script SQL contendo estrutura e dados para recriação.")
                 
@@ -1122,7 +1124,7 @@ def admin_dashboard():
                 
                 st.markdown("---")
                 
-                # 2. Data Export (CSV/JSON ZIP)
+                # 3. Data Export (CSV/JSON ZIP)
                 st.markdown("##### 📊 Exportar Dados (CSV/JSON)")
                 st.caption("Arquivos de dados compactados para análise externa.")
                 
@@ -1162,10 +1164,12 @@ def admin_dashboard():
         # --- IMPORT SECTION ---
         with c_import:
             st.markdown("#### 📥 RESTAURAR DADOS")
-            st.warning("⚠️ A restauração via Script SQL substituirá os dados atuais no Turso.")
+            st.warning("⚠️ A restauração substituirá os dados atuais. Faça backup antes de prosseguir!")
             
             with st.container(border=True):
-                uploaded_file = st.file_uploader("Carregar Script SQL (.sql)", type=['sql'])
+                restore_type = st.radio("Método de Restauração", ["Arquivo de Banco (.db)", "Script SQL (.sql)"])
+                
+                uploaded_file = st.file_uploader(f"Carregar arquivo {restore_type.split()[-1]}", type=['db', 'sql'])
                 
                 if uploaded_file:
                     st.error("⚠️ ATENÇÃO: Esta ação é irreversível!")
@@ -1174,17 +1178,23 @@ def admin_dashboard():
                     if confirm_check:
                         if st.button("🔴 INICIAR RESTAURAÇÃO", type="primary", use_container_width=True):
                             with st.spinner("Processando restauração..."):
+                                success = False
+                                msg = ""
+                                
                                 try:
-                                    # SQL Script
-                                    string_data = uploaded_file.getvalue().decode("utf-8")
-                                    success, msg = db.restore_from_sql(string_data)
+                                    if restore_type == "Arquivo de Banco (.db)":
+                                        success, msg = db.restore_from_db_file(uploaded_file.getvalue())
+                                    else:
+                                        # SQL Script
+                                        string_data = uploaded_file.getvalue().decode("utf-8")
+                                        success, msg = db.restore_from_sql(string_data)
                                     
                                     if success:
                                         # Log Action
                                         db.log_audit_action(
                                             st.session_state.user['id'], 
                                             "RESTORE_BACKUP", 
-                                            "Restored DB via SQL Script"
+                                            f"Restored DB via {restore_type}"
                                         )
                                         st.success(msg)
                                         time.sleep(2)
@@ -1193,6 +1203,75 @@ def admin_dashboard():
                                         st.error(msg)
                                 except Exception as e:
                                     st.error(f"Erro crítico na restauração: {e}")
+        
+        # --- REPORT SCHEDULING (NEW) ---
+        st.markdown("---")
+        with st.expander("⏱️ AGENDAMENTO DE RELATÓRIOS AUTOMÁTICOS"):
+            st.caption("Receba relatórios periódicos por e-mail (simulação).")
+            
+            c_sch1, c_sch2, c_sch3 = st.columns([2, 1, 1])
+            
+            with c_sch1:
+                sch_type = st.selectbox("Tipo de Relatório", ["Relatório de Usuários", "Relatório de Missões", "Relatório Financeiro"])
+                sch_freq = st.selectbox("Frequência", ["Diário (00:00)", "Semanal (Domingo)", "Mensal (Dia 1)"])
+                sch_email = st.text_input("Email para envio (Opcional)")
+                
+                if st.button("➕ CRIAR AGENDAMENTO"):
+                    try:
+                        if hasattr(db, 'create_report_schedule'):
+                            db.create_report_schedule(sch_type, sch_freq, sch_email)
+                            st.success(f"Agendamento criado: {sch_type} - {sch_freq}")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.warning("Funcionalidade de agendamento indisponível.")
+                    except Exception as e:
+                        st.error(f"Erro ao criar agendamento: {e}")
+
+            # List Active Schedules
+            st.markdown("##### 📅 Agendamentos Ativos")
+            try:
+                if hasattr(db, 'get_report_schedules'):
+                    schedules_df = db.get_report_schedules()
+                    
+                    if not schedules_df.empty:
+                        for _, row in schedules_df.iterrows():
+                            c_row1, c_row2 = st.columns([4, 1])
+                            with c_row1:
+                                st.info(f"**{row['report_type']}** | {row['frequency']} | 📧 {row['email'] if row['email'] else 'N/A'}")
+                            with c_row2:
+                                if st.button("❌", key=f"del_sch_{row['id']}", help="Remover agendamento"):
+                                    db.delete_report_schedule(row['id'])
+                                    st.rerun()
+                    else:
+                        st.caption("Nenhum agendamento ativo.")
+                else:
+                    st.caption("Carregando agendamentos...")
+            except Exception as e:
+                st.error(f"Erro ao carregar agendamentos: {e}")
+
+        # --- BACKUP SCHEDULER MOCK ---
+        st.markdown("---")
+        with st.expander("⏱️ AGENDAMENTO DE BACKUP AUTOMÁTICO"):
+            c_sch1, c_sch2, c_sch3 = st.columns([2, 1, 1])
+            freq = c_sch1.selectbox("Frequência Backup", ["Diário (00:00)", "Semanal (Domingo)", "Mensal (Dia 1)"])
+            email = c_sch1.text_input("Email para notificação (Opcional)")
+            
+            status_ph = c_sch3.empty()
+            if 'backup_schedule' not in st.session_state:
+                st.session_state.backup_schedule = False
+                
+            if st.session_state.backup_schedule:
+                status_ph.success("ATIVADO")
+                if c_sch2.button("DESATIVAR"):
+                    st.session_state.backup_schedule = False
+                    st.rerun()
+            else:
+                status_ph.warning("DESATIVADO")
+                if c_sch2.button("ATIVAR"):
+                    st.session_state.backup_schedule = True
+                    st.toast("Agendamento configurado! (Simulação)")
+                    st.rerun()
 
 
 # --- INTERFACE DO JOGADOR ---
@@ -1209,6 +1288,7 @@ def player_dashboard():
     unread_count = len(notifs[notifs['is_read'] == 0])
     
     with st.sidebar:
+        if st.session_state.get('sidebar_state', 'expanded') == 'expanded':
             # Avatar Display
             avatar = st.session_state.user.get('avatar_url')
             if not avatar or not os.path.exists(avatar):
@@ -1301,9 +1381,16 @@ def player_dashboard():
             """, unsafe_allow_html=True)
             
             st.markdown("---")
+            if st.button("⏪ OCULTAR MENU", use_container_width=True, key="player_toggle_sidebar"):
+                toggle_sidebar()
 
             if st.button("LOGOUT / SAIR", use_container_width=True):
                 logout()
+        else:
+            st.markdown("<div class='show-menu-button-wrapper'>", unsafe_allow_html=True)
+            if st.button("⏩ MOSTRAR MENU", use_container_width=True):
+                toggle_sidebar()
+            st.markdown("</div>", unsafe_allow_html=True)
 
     # Header
     col_h1, col_h2 = st.columns([3, 1])
@@ -1544,10 +1631,6 @@ def player_dashboard():
         if not history.empty:
             st.markdown("<div class='timeline'>", unsafe_allow_html=True)
             for _, row in history.iterrows():
-                # Tradução contextual dos termos para o extrato
-                term_display = "CRÉDITO" if row['type'] == 'EARN' else "DÉBITO"
-                if row['type'] == 'PENALTY': term_display = "PENALIDADE"
-                
                 color = "var(--neon-green)" if row['type'] == 'EARN' else "#ff4b4b"
                 icon = "➕" if row['type'] == 'EARN' else "➖"
                 if row['type'] == 'SPEND': icon = "🛒"
@@ -1557,7 +1640,7 @@ def player_dashboard():
                     <div class='timeline-dot' style='border-color: {color}; box-shadow: 0 0 10px {color};'></div>
                     <div class='timeline-content' style='border-left-color: {color};'>
                         <div style='display:flex; justify-content:space-between;'>
-                            <strong style='color:{color}'>{icon} {term_display}</strong>
+                            <strong style='color:{color}'>{icon} {row['type']}</strong>
                             <span style='color:#888; font-size:0.8em;'>{format_brt(row['timestamp'])}</span>
                         </div>
                         <div style='font-size: 1.2em; color: white;'>{row['amount']} PTS</div>

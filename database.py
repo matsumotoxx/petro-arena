@@ -11,33 +11,36 @@ from components.gs_sync import sync_user_created, sync_user_balance, sync_transa
 from components.drive_client import upload_file_to_drive, download_file_from_drive, get_latest_db_file_name
 import streamlit as st
 
-# libSQL para Turso
-try:
-    import libsql
-    HAS_LIBSQL = True
-except ImportError:
-    HAS_LIBSQL = False
-
 # Register adapters for numpy types
 sqlite3.register_adapter(np.int64, int)
 sqlite3.register_adapter(np.int32, int)
 
 DB_NAME = "petro_arena.db"
-
-def get_connection():
-    turso_url = st.secrets.get("TURSO_URL")
-    turso_token = st.secrets.get("TURSO_TOKEN")
-    
-    if HAS_LIBSQL and turso_url and turso_token:
-        return libsql.connect(turso_url, auth_token=turso_token)
-    return sqlite3.connect(DB_NAME)
-
 # --- CONFIGURAÇÃO GOOGLE DRIVE ---
 # Substitua o valor abaixo pelo ID da sua pasta do Google Drive conforme o Passo 6 do manual
 GOOGLE_DRIVE_BACKUP_FOLDER_ID = "1VJjyPz_miyG48JuhgAIkb89lRdvQAsiBeiw-nhGLLlI"
 
+def get_connection():
+    return sqlite3.connect(DB_NAME)
+
 @st.cache_resource
 def init_db():
+    # Check for DB in Google Drive and download if available
+    try:
+        drive_folder_id = st.secrets.get("google_drive_folder_id") or GOOGLE_DRIVE_BACKUP_FOLDER_ID
+        if drive_folder_id and drive_folder_id != "SEU_ID_DA_PASTA_DO_GOOGLE_DRIVE_AQUI":
+            latest_db_file_name = get_latest_db_file_name(drive_folder_id)
+            if latest_db_file_name and not os.path.exists(DB_NAME):
+                # Usar toast para mensagens não intrusivas na inicialização
+                st.toast(f"Baixando banco de dados: {latest_db_file_name}", icon="ℹ️")
+                download_file_from_drive(latest_db_file_name, DB_NAME, drive_folder_id)
+            elif not os.path.exists(DB_NAME):
+                print("Banco de dados local não encontrado. Criando um novo.")
+    except Exception as e:
+        # Registrar erro silenciosamente no console ou toast discreto
+        print(f"Erro de sincronização: {e}")
+        # st.toast(f"Sincronização offline: {e}", icon="⚠️")
+
     conn = get_connection()
     c = conn.cursor()
     
@@ -119,10 +122,10 @@ def init_db():
     
     c.execute("SELECT count(*) FROM level_config")
     if c.fetchone()[0] == 0:
-        c.execute("INSERT OR IGNORE INTO level_config VALUES ('Bronze', 0, '🥉')")
-        c.execute("INSERT OR IGNORE INTO level_config VALUES ('Prata', 1000, '🥈')")
-        c.execute("INSERT OR IGNORE INTO level_config VALUES ('Ouro', 5000, '🥇')")
-        c.execute("INSERT OR IGNORE INTO level_config VALUES ('Diamante', 10000, '💎')")
+        c.execute("INSERT INTO level_config VALUES ('Bronze', 0, '🥉')")
+        c.execute("INSERT INTO level_config VALUES ('Prata', 1000, '🥈')")
+        c.execute("INSERT INTO level_config VALUES ('Ouro', 5000, '🥇')")
+        c.execute("INSERT INTO level_config VALUES ('Diamante', 10000, '💎')")
     
     # Notifications Table
     c.execute('''
@@ -165,11 +168,22 @@ def init_db():
         )
     ''')
 
+    # Report Schedules Table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS report_schedules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            report_type TEXT NOT NULL,
+            frequency TEXT NOT NULL,
+            email TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
     # Default admin
     try:
-        c.execute("INSERT OR IGNORE INTO users (username, email, password, role, balance) VALUES (?, ?, ?, ?, ?)",
+        c.execute("INSERT INTO users (username, email, password, role, balance) VALUES (?, ?, ?, ?, ?)",
                   ("admin", "admin@petro.com", hash_password("admin123"), "Administrador", 0))
-    except Exception:
+    except sqlite3.IntegrityError:
         pass
         
     conn.commit()
@@ -202,7 +216,7 @@ def create_user(username, email, password, role='Jogador'):
                 "id": row[0], "username": row[1], "email": row[2], "role": row[3], "balance": row[4], "created_at": row[5],
             })
         return True
-    except Exception:
+    except sqlite3.IntegrityError:
         return False
     finally:
         conn.close()
@@ -233,8 +247,7 @@ def get_leaderboard(sort_by='balance'):
     conn = get_connection()
     # Map 'date' to 'created_at' for SQLite
     actual_sort = 'created_at' if sort_by == 'date' else 'balance'
-    # Filtrar apenas usuários com cargo 'Jogador'
-    query = f"SELECT username, balance, role, created_at FROM users WHERE role = 'Jogador' ORDER BY {actual_sort} DESC"
+    query = f"SELECT username, balance, role, created_at FROM users ORDER BY {actual_sort} DESC"
     df = pd.read_sql_query(query, conn)
     
     # Adicionar informação de nível
@@ -264,7 +277,17 @@ def log_audit_action(admin_id, action, target_id=None, details=None):
     conn.close()
 
 def sync_db_to_drive():
-    return
+    drive_folder_id = st.secrets.get("google_drive_folder_id") or GOOGLE_DRIVE_BACKUP_FOLDER_ID
+    if not drive_folder_id or drive_folder_id == "SEU_ID_DA_PASTA_DO_GOOGLE_DRIVE_AQUI":
+        st.error("ID da pasta do Google Drive não configurado.")
+        return
+    if os.path.exists(DB_NAME):
+        try:
+            filename = f"petro_arena_full_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+            upload_file_to_drive(DB_NAME, drive_folder_id, file_name=filename)
+            st.success("Sincronizado!")
+        except Exception as e:
+            st.error(f"Erro: {e}")
 
 def get_db_tables():
     conn = get_connection()
@@ -304,7 +327,9 @@ def export_to_json_zip():
     zip_buffer.seek(0)
     return zip_buffer
 
-def get_db_backup_binary():
+def get_db_file_bytes():
+    if os.path.exists(DB_NAME):
+        with open(DB_NAME, 'rb') as f: return f.read()
     return None
 
 def restore_from_db_file(file_bytes):
@@ -494,27 +519,23 @@ def get_pending_requests():
     conn.close()
     return df
 
-def process_purchase_request(req_id, action, admin_id, reason=None):
+def process_purchase_request(req_id, action, admin_id):
     conn = get_connection()
     c = conn.cursor()
     c.execute("SELECT user_id, item_id FROM purchase_requests WHERE id = ?", (req_id,))
     req = c.fetchone()
     if not req: return False
     uid, item_id = req
-    
-    # Obter nome do item para notificações
-    c.execute("SELECT name, cost FROM store_items WHERE id = ?", (item_id,))
-    item_data = c.fetchone()
-    item_name = item_data[0]
-    item_cost = item_data[1]
-
     if action == 'APPROVE':
+        c.execute("SELECT cost, name FROM store_items WHERE id = ?", (item_id,))
+        item = c.fetchone()
+        cost, name = item
         c.execute("SELECT balance FROM users WHERE id = ?", (uid,))
         bal = c.fetchone()[0]
-        if bal < item_cost: return False
-        c.execute("UPDATE users SET balance = balance - ? WHERE id = ?", (item_cost, uid))
+        if bal < cost: return False
+        c.execute("UPDATE users SET balance = balance - ? WHERE id = ?", (cost, uid))
         c.execute("UPDATE purchase_requests SET status = 'APPROVED' WHERE id = ?", (req_id,))
-        c.execute("INSERT INTO transactions (user_id, type, amount, description) VALUES (?, 'SPEND', ?, ?)", (uid, item_cost, f"Compra: {item_name}"))
+        c.execute("INSERT INTO transactions (user_id, type, amount, description) VALUES (?, 'SPEND', ?, ?)", (uid, cost, f"Compra: {name}"))
         tx_id = c.lastrowid
         conn.commit()
         
@@ -525,28 +546,9 @@ def process_purchase_request(req_id, action, admin_id, reason=None):
         c.execute("SELECT id, user_id, type, amount, description, timestamp FROM transactions WHERE id = ?", (tx_id,))
         trow = c.fetchone()
         if trow: sync_transaction({"id": trow[0], "user_id": trow[1], "username": u[0], "type": trow[2], "amount": trow[3], "description": trow[4], "timestamp": trow[5]})
-        
-        # Notificação de Aprovação
-        add_notification(uid, f"SUCESSO: Sua compra de '{item_name}' foi aprovada!")
-        
-        # Log de Auditoria
-        c.execute("INSERT INTO audit_logs (admin_id, action, target_id, details) VALUES (?, 'APROVAR_COMPRA', ?, ?)", 
-                  (admin_id, req_id, f"Compra aprovada: {item_name}"))
     else:
         c.execute("UPDATE purchase_requests SET status = 'REJECTED' WHERE id = ?", (req_id,))
-        
-        # Notificação de Rejeição com Motivo
-        msg = f"NEGADO: Sua compra de '{item_name}' foi recusada."
-        if reason:
-            msg += f" Motivo: {reason}"
-        add_notification(uid, msg)
-        
-        # Log de Auditoria
-        c.execute("INSERT INTO audit_logs (admin_id, action, target_id, details) VALUES (?, 'REJEITAR_COMPRA', ?, ?)", 
-                  (admin_id, req_id, f"Compra rejeitada: {item_name}. Motivo: {reason if reason else 'Não informado'}"))
-        
         conn.commit()
-        
     conn.close()
     return True
 
@@ -648,10 +650,23 @@ def get_report_data(rtype, filters):
     conn.close()
     return df
 
-def update_mission_status(mission_id, status):
+def create_report_schedule(rtype, freq, email):
     conn = get_connection()
     c = conn.cursor()
-    c.execute("UPDATE missions SET status = ? WHERE id = ?", (status, mission_id))
+    c.execute("INSERT INTO report_schedules (report_type, frequency, email) VALUES (?, ?, ?)", (rtype, freq, email))
+    conn.commit()
+    conn.close()
+
+def get_report_schedules():
+    conn = get_connection()
+    df = pd.read_sql_query("SELECT * FROM report_schedules", conn)
+    conn.close()
+    return df
+
+def delete_report_schedule(sid):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("DELETE FROM report_schedules WHERE id = ?", (sid,))
     conn.commit()
     conn.close()
 
