@@ -1,5 +1,4 @@
 import sqlite3
-import libsql_client
 import hashlib
 import pandas as pd
 import numpy as np
@@ -27,11 +26,9 @@ def get_connection():
     token = st.secrets.get("TURSO_TOKEN")
     
     if url:
-        from libsql_client import create_client_sync
-        # O Turso fornece um driver compatível com o SQLite via _sqlite_connection
-        client = create_client_sync(url, auth_token=token if token else "")
-        # Retornamos a conexão compatível com cursor() e execute()
-        return client._sqlite_connection
+        # O driver 'libsql' é o mais estável e idêntico ao sqlite3
+        import libsql
+        return libsql.connect(url, auth_token=token if token else "")
     
     # Fallback para SQLite local
     return sqlite3.connect(DB_NAME)

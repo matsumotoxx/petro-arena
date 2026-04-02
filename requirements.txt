@@ -13,4 +13,4 @@ requests
 extra-streamlit-components
 pytz
 openpyxl
-libsql-client
+libsql
