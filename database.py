@@ -26,7 +26,9 @@ def get_connection():
         st.error(f"Erro: TURSO_URL não encontrada nos Secrets. Chaves lidas: {available_keys}")
         raise Exception("TURSO_URL não configurada")
         
-    return libsql_client.connect(url, auth_token=token if token else "")
+    # Nova forma de conexão compatível com as versões recentes do libsql-client
+    from libsql_client import create_client_sync
+    return create_client_sync(url=url, auth_token=token if token else "")._sqlite_connection()
 
 def reset_level_config():
     conn = get_connection()
