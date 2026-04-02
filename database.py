@@ -53,22 +53,8 @@ def reset_level_config():
 
 @st.cache_resource
 def init_db():
-    # Check for DB in Google Drive and download if available
-    try:
-        drive_folder_id = st.secrets.get("google_drive_folder_id") or GOOGLE_DRIVE_BACKUP_FOLDER_ID
-        if drive_folder_id and drive_folder_id != "SEU_ID_DA_PASTA_DO_GOOGLE_DRIVE_AQUI":
-            latest_db_file_name = get_latest_db_file_name(drive_folder_id)
-            if latest_db_file_name and not os.path.exists(DB_NAME):
-                # Usar toast para mensagens não intrusivas na inicialização
-                st.toast(f"Baixando banco de dados: {latest_db_file_name}", icon="ℹ️")
-                download_file_from_drive(latest_db_file_name, DB_NAME, drive_folder_id)
-            elif not os.path.exists(DB_NAME):
-                print("Banco de dados local não encontrado. Criando um novo.")
-    except Exception as e:
-        # Registrar erro silenciosamente no console ou toast discreto
-        print(f"Erro de sincronização: {e}")
-        # st.toast(f"Sincronização offline: {e}", icon="⚠️")
-
+    # Desativado o download do Google Drive para focar no Turso
+    # Se o Turso estiver configurado, ele será usado automaticamente em get_connection()
     conn = get_connection()
     c = conn.cursor()
     
