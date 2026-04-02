@@ -22,14 +22,14 @@ DB_NAME = "petro_arena.db"
 GOOGLE_DRIVE_BACKUP_FOLDER_ID = "1VJjyPz_miyG48JuhgAIkb89lRdvQAsiBeiw-nhGLLlI"
 
 def get_connection():
-    # Pega as credenciais dos Secrets
+    # Pega exatamente os nomes que você configurou nos Secrets
     url = st.secrets.get("TURSO_URL")
     token = st.secrets.get("TURSO_TOKEN")
     
     if url:
-        # Nova forma de conexão compatível com as versões recentes do libsql-client
-        from libsql_client import create_client_sync
-        return create_client_sync(url=url, auth_token=token if token else "")._sqlite_connection()
+        # Forma oficial e mais estável de conexão do Turso (libsql)
+        import libsql_client
+        return libsql_client.connect(url, auth_token=token if token else "")
     
     # Fallback para SQLite local
     return sqlite3.connect(DB_NAME)
