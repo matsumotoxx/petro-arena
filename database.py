@@ -12,50 +12,24 @@ from components.drive_client import upload_file_to_drive, download_file_from_dri
 import streamlit as st
 
 # Tenta importar o cliente do Turso (libsql)
-try:
-    import libsql_client
-    USE_TURSO = True
-except ImportError:
-    USE_TURSO = False
-
-# Register adapters for numpy types (apenas para sqlite3 local)
-if not USE_TURSO:
-    sqlite3.register_adapter(np.int64, int)
-    sqlite3.register_adapter(np.int32, int)
+import libsql_client
 
 DB_NAME = "petro_arena.db"
-# --- CONFIGURAÇÃO GOOGLE DRIVE ---
-# Substitua o valor abaixo pelo ID da sua pasta do Google Drive conforme o Passo 6 do manual
-GOOGLE_DRIVE_BACKUP_FOLDER_ID = "1VJjyPz_miyG48JuhgAIkb89lRdvQAsiBeiw-nhGLLlI"
 
 def get_connection():
-    # Prioridade máxima para o Turso se as credenciais existirem
+    # EXCLUSIVO PARA TURSO
     if "TURSO_URL" in st.secrets:
         url = st.secrets["TURSO_URL"]
         auth_token = st.secrets.get("TURSO_TOKEN", "")
-        # Usando a conexão nativa do libsql que o pandas suporta se passar o driver correto
+        # Conexão direta com Turso
         return libsql_client.create_client_sync(url=url, auth_token=auth_token)._sqlite_connection()
-    
-    return sqlite3.connect(DB_NAME)
+    else:
+        st.error("ERRO: TURSO_URL não configurada em st.secrets")
+        raise Exception("TURSO_URL não configurada")
 
 @st.cache_resource
 def init_db():
-    # Check for DB in Google Drive and download if available
-    try:
-        drive_folder_id = st.secrets.get("google_drive_folder_id") or GOOGLE_DRIVE_BACKUP_FOLDER_ID
-        if drive_folder_id and drive_folder_id != "SEU_ID_DA_PASTA_DO_GOOGLE_DRIVE_AQUI":
-            latest_db_file_name = get_latest_db_file_name(drive_folder_id)
-            if latest_db_file_name and not os.path.exists(DB_NAME):
-                # Usar toast para mensagens não intrusivas na inicialização
-                st.toast(f"Baixando banco de dados: {latest_db_file_name}", icon="ℹ️")
-                download_file_from_drive(latest_db_file_name, DB_NAME, drive_folder_id)
-            elif not os.path.exists(DB_NAME):
-                print("Banco de dados local não encontrado. Criando um novo.")
-    except Exception as e:
-        # Registrar erro silenciosamente no console ou toast discreto
-        print(f"Erro de sincronização: {e}")
-        # st.toast(f"Sincronização offline: {e}", icon="⚠️")
-
+    # Removida a lógica de download do Google Drive para focar apenas no Turso
     conn = get_connection()
     c = conn.cursor()
     
