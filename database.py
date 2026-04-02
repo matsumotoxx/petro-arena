@@ -21,8 +21,8 @@ def get_connection():
     if "TURSO_URL" in st.secrets:
         url = st.secrets["TURSO_URL"]
         auth_token = st.secrets.get("TURSO_TOKEN", "")
-        # Conexão direta com Turso
-        return libsql_client.create_client_sync(url=url, auth_token=auth_token)._sqlite_connection()
+        # Usando o método connect() que é o padrão recomendado para compatibilidade com sqlite3
+        return libsql_client.connect(url, auth_token=auth_token)
     else:
         st.error("ERRO: TURSO_URL não configurada em st.secrets")
         raise Exception("TURSO_URL não configurada")
@@ -187,8 +187,14 @@ def authenticate_user(email, password):
     c.execute("SELECT id, username, role, balance, avatar_url, streak_days FROM users WHERE email = ? AND password = ?", 
               (email, hash_password(password)))
     user = c.fetchone()
+    # No Turso/libsql, fetchone pode retornar um objeto diferente ou None
+    if user:
+        # Converter para formato de tupla que o resto do app espera
+        user_tuple = (user[0], user[1], user[2], user[3], user[4], user[5])
+        conn.close()
+        return user_tuple
     conn.close()
-    return user
+    return None
 
 def create_user(username, email, password, role='Jogador'):
     conn = get_connection()
@@ -197,7 +203,10 @@ def create_user(username, email, password, role='Jogador'):
         c.execute("INSERT INTO users (username, email, password, role, balance, streak_days, last_login_date) VALUES (?, ?, ?, ?, ?, 0, NULL)",
                   (username, email, hash_password(password), role, 0))
         conn.commit()
-        new_id = c.lastrowid
+        # No Turso, lastrowid pode não estar disponível da mesma forma
+        c.execute("SELECT id FROM users WHERE email = ?", (email,))
+        new_id = c.fetchone()[0]
+        
         c.execute("SELECT id, username, email, role, balance, created_at FROM users WHERE id = ?", (new_id,))
         row = c.fetchone()
         if row:
@@ -205,7 +214,8 @@ def create_user(username, email, password, role='Jogador'):
                 "id": row[0], "username": row[1], "email": row[2], "role": row[3], "balance": row[4], "created_at": row[5],
             })
         return True
-    except sqlite3.IntegrityError:
+    except Exception as e:
+        print(f"Erro ao criar usuário: {e}")
         return False
     finally:
         conn.close()
@@ -281,8 +291,9 @@ def sync_db_to_drive():
 def get_db_tables():
     conn = get_connection()
     c = conn.cursor()
+    # Turso usa tabelas de sistema levemente diferentes, mas sqlite_master ainda funciona
     c.execute("SELECT name FROM sqlite_master WHERE type='table';")
-    tables = [row[0] for row in c.fetchall() if row[0] != 'sqlite_sequence']
+    tables = [row[0] for row in c.fetchall() if row[0] not in ('sqlite_sequence', '_shape_metadata')]
     conn.close()
     return tables
 
