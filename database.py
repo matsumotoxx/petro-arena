@@ -1,4 +1,5 @@
 import sqlite3
+import libsql_client
 import hashlib
 import pandas as pd
 import numpy as np
@@ -21,6 +22,17 @@ DB_NAME = "petro_arena.db"
 GOOGLE_DRIVE_BACKUP_FOLDER_ID = "1VJjyPz_miyG48JuhgAIkb89lRdvQAsiBeiw-nhGLLlI"
 
 def get_connection():
+    url = st.secrets.get("TURSO_URL")
+    token = st.secrets.get("TURSO_TOKEN")
+    
+    if url:
+        from libsql_client import create_client
+        # O Turso via libsql_client não é um objeto de conexão nativo do SQLite (PEP 249).
+        # Para que o Pandas (pd.read_sql_query) funcione, precisamos de um driver compatível.
+        # A forma mais estável é usar o create_client e interagir diretamente se necessário, 
+        # ou usar a URL libsql:// para conexões diretas.
+        return create_client(url, auth_token=token if token else "")
+    
     return sqlite3.connect(DB_NAME)
 
 def reset_level_config():
@@ -42,20 +54,18 @@ def reset_level_config():
 
 @st.cache_resource
 def init_db():
-    # Download do Google Drive se necessário
-    if not os.path.exists(DB_NAME):
-        drive_folder_id = st.secrets.get("google_drive_folder_id") or GOOGLE_DRIVE_BACKUP_FOLDER_ID
-        if drive_folder_id and drive_folder_id != "SEU_ID_DA_PASTA_DO_GOOGLE_DRIVE_AQUI":
-            try:
-                latest_file = get_latest_db_file_name(drive_folder_id)
-                if latest_file:
-                    download_file_from_drive(latest_file, DB_NAME)
-                    st.toast("Banco de dados restaurado do Google Drive!")
-            except Exception as e:
-                st.error(f"Erro ao baixar backup: {e}")
-
+    # Desativado o download do Google Drive para focar no Turso
+    # Se o Turso estiver configurado, ele será usado automaticamente em get_connection()
     conn = get_connection()
-    c = conn.cursor()
+    
+    # Nota: No libsql-client (Turso), a execução é um pouco diferente (método execute no cliente)
+    # mas para compatibilidade com o resto do código, o cursor simula o comportamento.
+    if hasattr(conn, 'cursor'):
+        c = conn.cursor()
+    else:
+        # No Turso/libsql, o próprio cliente pode executar comandos.
+        # Vamos manter a lógica o mais compatível possível.
+        c = conn
     
     # Users Table
     c.execute('''
