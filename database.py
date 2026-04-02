@@ -17,15 +17,18 @@ import libsql_client
 DB_NAME = "petro_arena.db"
 
 def get_connection():
-    # EXCLUSIVO PARA TURSO
-    if "TURSO_URL" in st.secrets:
-        url = st.secrets["TURSO_URL"]
-        auth_token = st.secrets.get("TURSO_TOKEN", "")
-        # Usando o método connect() que é o padrão recomendado para compatibilidade com sqlite3
-        return libsql_client.connect(url, auth_token=auth_token)
+    # Tenta encontrar a URL em diferentes nomes possíveis
+    url = st.secrets.get("TURSO_URL") or st.secrets.get("TURSO_DATABASE_URL")
+    token = st.secrets.get("TURSO_TOKEN") or st.secrets.get("TURSO_AUTH_TOKEN")
+    
+    if url:
+        # Se encontrou a URL, conecta ao Turso
+        return libsql_client.connect(url, auth_token=token if token else "")
     else:
-        st.error("ERRO: TURSO_URL não configurada em st.secrets")
-        raise Exception("TURSO_URL não configurada")
+        # Se não encontrou, mostra quais chaves existem para ajudar no diagnóstico
+        available_keys = list(st.secrets.keys())
+        st.error(f"ERRO: TURSO_URL não encontrada. Chaves disponíveis nos Secrets: {available_keys}")
+        raise Exception(f"Configuração ausente. Chaves encontradas: {available_keys}")
 
 @st.cache_resource
 def init_db():
