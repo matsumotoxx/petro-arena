@@ -13,4 +13,3 @@ requests
 extra-streamlit-components
 libsql-client
 pytz
-pytz
