@@ -27,8 +27,9 @@ def get_connection():
     token = st.secrets.get("TURSO_TOKEN")
     
     if url:
-        # connect() é a versão síncrona (PEP 249) compatível com Streamlit e Pandas
-        return libsql_client.connect(url, auth_token=token if token else "")
+        from libsql_client import create_client_sync
+        # create_client_sync é feito especificamente para rodar fora de loops async
+        return create_client_sync(url, auth_token=token if token else "")
     
     # Fallback para SQLite local
     return sqlite3.connect(DB_NAME)
