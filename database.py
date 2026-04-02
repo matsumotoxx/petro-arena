@@ -1,5 +1,4 @@
 import sqlite3
-import libsql_client
 import hashlib
 import pandas as pd
 import numpy as np
@@ -22,17 +21,6 @@ DB_NAME = "petro_arena.db"
 GOOGLE_DRIVE_BACKUP_FOLDER_ID = "1VJjyPz_miyG48JuhgAIkb89lRdvQAsiBeiw-nhGLLlI"
 
 def get_connection():
-    # Pega exatamente os nomes que você configurou nos Secrets
-    url = st.secrets.get("TURSO_URL")
-    token = st.secrets.get("TURSO_TOKEN")
-    
-    if url:
-        # Forma oficial e mais estável de conexão do Turso (libsql)
-        from libsql_client import create_client
-        client = create_client(url, auth_token=token if token else "")
-        return client
-    
-    # Fallback para SQLite local
     return sqlite3.connect(DB_NAME)
 
 def reset_level_config():
@@ -54,8 +42,18 @@ def reset_level_config():
 
 @st.cache_resource
 def init_db():
-    # Desativado o download do Google Drive para focar no Turso
-    # Se o Turso estiver configurado, ele será usado automaticamente em get_connection()
+    # Download do Google Drive se necessário
+    if not os.path.exists(DB_NAME):
+        drive_folder_id = st.secrets.get("google_drive_folder_id") or GOOGLE_DRIVE_BACKUP_FOLDER_ID
+        if drive_folder_id and drive_folder_id != "SEU_ID_DA_PASTA_DO_GOOGLE_DRIVE_AQUI":
+            try:
+                latest_file = get_latest_db_file_name(drive_folder_id)
+                if latest_file:
+                    download_file_from_drive(latest_file, DB_NAME)
+                    st.toast("Banco de dados restaurado do Google Drive!")
+            except Exception as e:
+                st.error(f"Erro ao baixar backup: {e}")
+
     conn = get_connection()
     c = conn.cursor()
     
@@ -213,14 +211,8 @@ def authenticate_user(email, password):
     c.execute("SELECT id, username, role, balance, avatar_url, streak_days FROM users WHERE email = ? AND password = ?", 
               (email, hash_password(password)))
     user = c.fetchone()
-    # No Turso/libsql, fetchone pode retornar um objeto diferente ou None
-    if user:
-        # Converter para formato de tupla que o resto do app espera
-        user_tuple = (user[0], user[1], user[2], user[3], user[4], user[5])
-        conn.close()
-        return user_tuple
     conn.close()
-    return None
+    return user
 
 def create_user(username, email, password, role='Jogador'):
     conn = get_connection()
@@ -228,10 +220,8 @@ def create_user(username, email, password, role='Jogador'):
     try:
         c.execute("INSERT INTO users (username, email, password, role, balance, streak_days, last_login_date) VALUES (?, ?, ?, ?, ?, 0, NULL)",
                   (username, email, hash_password(password), role, 0))
+        new_id = c.lastrowid
         conn.commit()
-        # No Turso, lastrowid pode não estar disponível da mesma forma
-        c.execute("SELECT id FROM users WHERE email = ?", (email,))
-        new_id = c.fetchone()[0]
         
         c.execute("SELECT id, username, email, role, balance, created_at FROM users WHERE id = ?", (new_id,))
         row = c.fetchone()
@@ -562,6 +552,7 @@ def process_purchase_request(req_id, action, admin_id):
         c.execute("UPDATE users SET balance = balance - ? WHERE id = ?", (cost, uid))
         c.execute("UPDATE purchase_requests SET status = 'APPROVED' WHERE id = ?", (req_id,))
         c.execute("INSERT INTO transactions (user_id, type, amount, description) VALUES (?, 'SPEND', ?, ?)", (uid, cost, f"Compra: {name}"))
+        c.execute("INSERT INTO audit_logs (admin_id, action, target_id, details) VALUES (?, 'PURCHASE_APPROVE', ?, ?)", (admin_id, uid, f"Aprovação de compra: {name}"))
         tx_id = c.lastrowid
         conn.commit()
         
@@ -574,6 +565,7 @@ def process_purchase_request(req_id, action, admin_id):
         if trow: sync_transaction({"id": trow[0], "user_id": trow[1], "username": u[0], "type": trow[2], "amount": trow[3], "description": trow[4], "timestamp": trow[5]})
     else:
         c.execute("UPDATE purchase_requests SET status = 'REJECTED' WHERE id = ?", (req_id,))
+        c.execute("INSERT INTO audit_logs (admin_id, action, target_id, details) VALUES (?, 'PURCHASE_REJECT', ?, 'Compra rejeitada')", (admin_id, uid))
         conn.commit()
     conn.close()
     return True
@@ -650,7 +642,8 @@ def process_mission_validation(pmid, action, justification, admin_id):
         rew, title = c.fetchone()
         c.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (rew, uid))
         c.execute("UPDATE player_missions SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ?", (pmid,))
-        c.execute("INSERT INTO transactions (user_id, type, amount, description) VALUES (?, 'EARN', ?, ?)", (uid, rew, f"Missão: {title}"))
+        c.execute("INSERT INTO transactions (user_id, type, amount, description) VALUES (?, ?, ?, ?)", (uid, 'EARN', rew, f"Missão: {title}"))
+        c.execute("INSERT INTO audit_logs (admin_id, action, target_id, details) VALUES (?, 'APPROVE_MISSION', ?, ?)", (admin_id, uid, f"Missão aprovada: {title}"))
         tx_id = c.lastrowid
         conn.commit()
 
@@ -663,6 +656,7 @@ def process_mission_validation(pmid, action, justification, admin_id):
         if trow: sync_transaction({"id": trow[0], "user_id": trow[1], "username": u[0], "type": trow[2], "amount": trow[3], "description": trow[4], "timestamp": trow[5]})
     else:
         c.execute("UPDATE player_missions SET status = 'rejected' WHERE id = ?", (pmid,))
+        c.execute("INSERT INTO audit_logs (admin_id, action, target_id, details) VALUES (?, 'REJECT_MISSION', ?, ?)", (admin_id, pmid, f"Justificativa: {justification}"))
         conn.commit()
     conn.close()
     return True, "Processado"
