@@ -8,27 +8,20 @@ import io
 import zipfile
 from datetime import datetime
 from components.gs_sync import sync_user_created, sync_user_balance, sync_transaction
+from components.drive_client import upload_file_to_drive, download_file_from_drive, get_latest_db_file_name
 import streamlit as st
 
-# Tenta importar o cliente do Turso (libsql)
-import libsql_client
+# Register adapters for numpy types
+sqlite3.register_adapter(np.int64, int)
+sqlite3.register_adapter(np.int32, int)
 
 DB_NAME = "petro_arena.db"
+# --- CONFIGURAÇÃO GOOGLE DRIVE ---
+# Substitua o valor abaixo pelo ID da sua pasta do Google Drive conforme o Passo 6 do manual
+GOOGLE_DRIVE_BACKUP_FOLDER_ID = "1VJjyPz_miyG48JuhgAIkb89lRdvQAsiBeiw-nhGLLlI"
 
 def get_connection():
-    # Pega exatamente os nomes configurados nos Secrets
-    url = st.secrets.get("TURSO_URL")
-    token = st.secrets.get("TURSO_TOKEN")
-    
-    if not url:
-        # Debug para ver no log do Streamlit o que ele está lendo
-        available_keys = list(st.secrets.keys())
-        st.error(f"Erro: TURSO_URL não encontrada nos Secrets. Chaves lidas: {available_keys}")
-        raise Exception("TURSO_URL não configurada")
-        
-    # Nova forma de conexão compatível com as versões recentes do libsql-client
-    from libsql_client import create_client_sync
-    return create_client_sync(url=url, auth_token=token if token else "")._sqlite_connection()
+    return sqlite3.connect(DB_NAME)
 
 def reset_level_config():
     conn = get_connection()
@@ -49,6 +42,22 @@ def reset_level_config():
 
 @st.cache_resource
 def init_db():
+    # Check for DB in Google Drive and download if available
+    try:
+        drive_folder_id = st.secrets.get("google_drive_folder_id") or GOOGLE_DRIVE_BACKUP_FOLDER_ID
+        if drive_folder_id and drive_folder_id != "SEU_ID_DA_PASTA_DO_GOOGLE_DRIVE_AQUI":
+            latest_db_file_name = get_latest_db_file_name(drive_folder_id)
+            if latest_db_file_name and not os.path.exists(DB_NAME):
+                # Usar toast para mensagens não intrusivas na inicialização
+                st.toast(f"Baixando banco de dados: {latest_db_file_name}", icon="ℹ️")
+                download_file_from_drive(latest_db_file_name, DB_NAME, drive_folder_id)
+            elif not os.path.exists(DB_NAME):
+                print("Banco de dados local não encontrado. Criando um novo.")
+    except Exception as e:
+        # Registrar erro silenciosamente no console ou toast discreto
+        print(f"Erro de sincronização: {e}")
+        # st.toast(f"Sincronização offline: {e}", icon="⚠️")
+
     conn = get_connection()
     c = conn.cursor()
     
