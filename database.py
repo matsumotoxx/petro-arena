@@ -195,12 +195,15 @@ def init_db():
 
     # Default admin
     try:
-        c.execute("INSERT INTO users (username, email, password, role, balance) VALUES (?, ?, ?, ?, ?)",
-                  ("admin", "admin@petro.com", hash_password("admin123"), "Administrador", 0))
-    except sqlite3.IntegrityError:
+        # Verifica se o admin já existe antes de tentar inserir
+        c.execute("SELECT count(*) FROM users WHERE username = 'admin' OR email = 'admin@petro.com'")
+        if c.fetchone()[0] == 0:
+            c.execute("INSERT INTO users (username, email, password, role, balance) VALUES (?, ?, ?, ?, ?)",
+                      ("admin", "admin@petro.com", hash_password("admin123"), "Administrador", 0))
+            conn.commit()
+    except Exception:
         pass
         
-    conn.commit()
     conn.close()
 
 def hash_password(password):
