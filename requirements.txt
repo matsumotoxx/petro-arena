@@ -12,5 +12,5 @@ python-dateutil
 requests
 extra-streamlit-components
 pytz
-libsql-client
 openpyxl
+libsql-client

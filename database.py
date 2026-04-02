@@ -221,8 +221,14 @@ def authenticate_user(email, password):
     c.execute("SELECT id, username, role, balance, avatar_url, streak_days FROM users WHERE email = ? AND password = ?", 
               (email, hash_password(password)))
     user = c.fetchone()
+    # No Turso/libsql, fetchone pode retornar um objeto diferente ou None
+    if user:
+        # Converter para formato de tupla que o resto do app espera
+        user_tuple = (user[0], user[1], user[2], user[3], user[4], user[5])
+        conn.close()
+        return user_tuple
     conn.close()
-    return user
+    return None
 
 def create_user(username, email, password, role='Jogador'):
     conn = get_connection()
@@ -230,8 +236,10 @@ def create_user(username, email, password, role='Jogador'):
     try:
         c.execute("INSERT INTO users (username, email, password, role, balance, streak_days, last_login_date) VALUES (?, ?, ?, ?, ?, 0, NULL)",
                   (username, email, hash_password(password), role, 0))
-        new_id = c.lastrowid
         conn.commit()
+        # No Turso, lastrowid pode não estar disponível da mesma forma
+        c.execute("SELECT id FROM users WHERE email = ?", (email,))
+        new_id = c.fetchone()[0]
         
         c.execute("SELECT id, username, email, role, balance, created_at FROM users WHERE id = ?", (new_id,))
         row = c.fetchone()
