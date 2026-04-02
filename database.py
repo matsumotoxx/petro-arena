@@ -28,8 +28,9 @@ def get_connection():
     
     if url:
         # Forma oficial e mais estável de conexão do Turso (libsql)
-        import libsql_client
-        return libsql_client.connect(url, auth_token=token if token else "")
+        from libsql_client import create_client
+        client = create_client(url, auth_token=token if token else "")
+        return client
     
     # Fallback para SQLite local
     return sqlite3.connect(DB_NAME)
