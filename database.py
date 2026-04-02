@@ -22,17 +22,15 @@ DB_NAME = "petro_arena.db"
 GOOGLE_DRIVE_BACKUP_FOLDER_ID = "1VJjyPz_miyG48JuhgAIkb89lRdvQAsiBeiw-nhGLLlI"
 
 def get_connection():
+    # Pega exatamente os nomes que você configurou nos Secrets
     url = st.secrets.get("TURSO_URL")
     token = st.secrets.get("TURSO_TOKEN")
     
     if url:
-        from libsql_client import create_client
-        # O Turso via libsql_client não é um objeto de conexão nativo do SQLite (PEP 249).
-        # Para que o Pandas (pd.read_sql_query) funcione, precisamos de um driver compatível.
-        # A forma mais estável é usar o create_client e interagir diretamente se necessário, 
-        # ou usar a URL libsql:// para conexões diretas.
-        return create_client(url, auth_token=token if token else "")
+        # connect() é a versão síncrona (PEP 249) compatível com Streamlit e Pandas
+        return libsql_client.connect(url, auth_token=token if token else "")
     
+    # Fallback para SQLite local
     return sqlite3.connect(DB_NAME)
 
 def reset_level_config():
@@ -58,14 +56,7 @@ def init_db():
     # Se o Turso estiver configurado, ele será usado automaticamente em get_connection()
     conn = get_connection()
     
-    # Nota: No libsql-client (Turso), a execução é um pouco diferente (método execute no cliente)
-    # mas para compatibilidade com o resto do código, o cursor simula o comportamento.
-    if hasattr(conn, 'cursor'):
-        c = conn.cursor()
-    else:
-        # No Turso/libsql, o próprio cliente pode executar comandos.
-        # Vamos manter a lógica o mais compatível possível.
-        c = conn
+    c = conn.cursor()
     
     # Users Table
     c.execute('''
