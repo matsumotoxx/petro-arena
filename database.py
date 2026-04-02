@@ -17,18 +17,33 @@ import libsql_client
 DB_NAME = "petro_arena.db"
 
 def get_connection():
-    # Tenta encontrar a URL em diferentes nomes possíveis
+    # EXCLUSIVO PARA TURSO
     url = st.secrets.get("TURSO_URL") or st.secrets.get("TURSO_DATABASE_URL")
     token = st.secrets.get("TURSO_TOKEN") or st.secrets.get("TURSO_AUTH_TOKEN")
     
-    if url:
-        # Se encontrou a URL, conecta ao Turso
-        return libsql_client.connect(url, auth_token=token if token else "")
-    else:
-        # Se não encontrou, mostra quais chaves existem para ajudar no diagnóstico
+    if not url:
         available_keys = list(st.secrets.keys())
-        st.error(f"ERRO: TURSO_URL não encontrada. Chaves disponíveis nos Secrets: {available_keys}")
-        raise Exception(f"Configuração ausente. Chaves encontradas: {available_keys}")
+        st.error(f"ERRO: Configuração do Turso não encontrada. Chaves nos Secrets: {available_keys}")
+        raise Exception("TURSO_URL não configurada")
+        
+    return libsql_client.connect(url, auth_token=token if token else "")
+
+def reset_level_config():
+    conn = get_connection()
+    c = conn.cursor()
+    try:
+        c.execute("DELETE FROM level_config")
+        c.execute("INSERT INTO level_config VALUES ('Bronze', 0, '🥉')")
+        c.execute("INSERT INTO level_config VALUES ('Prata', 1000, '🥈')")
+        c.execute("INSERT INTO level_config VALUES ('Ouro', 5000, '🥇')")
+        c.execute("INSERT INTO level_config VALUES ('Diamante', 10000, '💎')")
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Erro ao resetar níveis: {e}")
+        return False
+    finally:
+        conn.close()
 
 @st.cache_resource
 def init_db():

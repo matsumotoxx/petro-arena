@@ -912,6 +912,12 @@ def admin_dashboard():
                     st.success("Configuração de níveis atualizada com sucesso!")
                     time.sleep(1)
                     st.rerun()
+        
+        if st.button("🔄 RESETAR PARA PADRÃO (Bronze, Prata, Ouro, Diamante)"):
+            if db.reset_level_config():
+                st.success("Níveis resetados para o padrão!")
+                time.sleep(1)
+                st.rerun()
 
         # Preview
         st.markdown("---")
