@@ -1,4 +1,5 @@
 import sqlite3
+import libsql_client
 import hashlib
 import pandas as pd
 import numpy as np
@@ -21,6 +22,14 @@ DB_NAME = "petro_arena.db"
 GOOGLE_DRIVE_BACKUP_FOLDER_ID = "1VJjyPz_miyG48JuhgAIkb89lRdvQAsiBeiw-nhGLLlI"
 
 def get_connection():
+    # EXCLUSIVO PARA TURSO
+    url = st.secrets.get("TURSO_URL")
+    token = st.secrets.get("TURSO_TOKEN")
+    
+    if url:
+        return libsql_client.connect(url, auth_token=token if token else "")
+    
+    # Fallback para SQLite local se as chaves não existirem (para testes)
     return sqlite3.connect(DB_NAME)
 
 def reset_level_config():
