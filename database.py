@@ -8,7 +8,6 @@ import io
 import zipfile
 from datetime import datetime
 from components.gs_sync import sync_user_created, sync_user_balance, sync_transaction
-from components.drive_client import upload_file_to_drive, download_file_from_drive, get_latest_db_file_name
 import streamlit as st
 
 # Tenta importar o cliente do Turso (libsql)
@@ -17,13 +16,14 @@ import libsql_client
 DB_NAME = "petro_arena.db"
 
 def get_connection():
-    # EXCLUSIVO PARA TURSO
-    url = st.secrets.get("TURSO_URL") or st.secrets.get("TURSO_DATABASE_URL")
-    token = st.secrets.get("TURSO_TOKEN") or st.secrets.get("TURSO_AUTH_TOKEN")
+    # Pega exatamente os nomes configurados nos Secrets
+    url = st.secrets.get("TURSO_URL")
+    token = st.secrets.get("TURSO_TOKEN")
     
     if not url:
+        # Debug para ver no log do Streamlit o que ele está lendo
         available_keys = list(st.secrets.keys())
-        st.error(f"ERRO: Configuração do Turso não encontrada. Chaves nos Secrets: {available_keys}")
+        st.error(f"Erro: TURSO_URL não encontrada nos Secrets. Chaves lidas: {available_keys}")
         raise Exception("TURSO_URL não configurada")
         
     return libsql_client.connect(url, auth_token=token if token else "")
@@ -40,14 +40,13 @@ def reset_level_config():
         conn.commit()
         return True
     except Exception as e:
-        print(f"Erro ao resetar níveis: {e}")
+        st.error(f"Erro ao resetar: {e}")
         return False
     finally:
         conn.close()
 
 @st.cache_resource
 def init_db():
-    # Removida a lógica de download do Google Drive para focar apenas no Turso
     conn = get_connection()
     c = conn.cursor()
     
