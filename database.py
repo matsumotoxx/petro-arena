@@ -11,9 +11,17 @@ from components.gs_sync import sync_user_created, sync_user_balance, sync_transa
 from components.drive_client import upload_file_to_drive, download_file_from_drive, get_latest_db_file_name
 import streamlit as st
 
-# Register adapters for numpy types
-sqlite3.register_adapter(np.int64, int)
-sqlite3.register_adapter(np.int32, int)
+# Tenta importar o cliente do Turso (libsql)
+try:
+    import libsql_client
+    USE_TURSO = True
+except ImportError:
+    USE_TURSO = False
+
+# Register adapters for numpy types (apenas para sqlite3 local)
+if not USE_TURSO:
+    sqlite3.register_adapter(np.int64, int)
+    sqlite3.register_adapter(np.int32, int)
 
 DB_NAME = "petro_arena.db"
 # --- CONFIGURAÇÃO GOOGLE DRIVE ---
@@ -21,6 +29,13 @@ DB_NAME = "petro_arena.db"
 GOOGLE_DRIVE_BACKUP_FOLDER_ID = "1VJjyPz_miyG48JuhgAIkb89lRdvQAsiBeiw-nhGLLlI"
 
 def get_connection():
+    # Prioridade máxima para o Turso se as credenciais existirem
+    if "TURSO_URL" in st.secrets:
+        url = st.secrets["TURSO_URL"]
+        auth_token = st.secrets.get("TURSO_TOKEN", "")
+        # Usando a conexão nativa do libsql que o pandas suporta se passar o driver correto
+        return libsql_client.create_client_sync(url=url, auth_token=auth_token)._sqlite_connection()
+    
     return sqlite3.connect(DB_NAME)
 
 @st.cache_resource
